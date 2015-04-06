@@ -16,17 +16,16 @@ EXAMPLES = '''
 import json
 import os
 
-NIX_PATH = os.environ['HOME'] + "/.nix-profile/bin/nix-env"
+
+NIX_PATH = os.expanduser("~/.nix-profile/bin/nix-env")
+
 
 def query_package(module, name, state="present"):
     if state == "present":
         cmd = "nix-env -q %s" % (name)
         rc, stdout, stderr = module.run_command(cmd, check_rc=False)
+        return rc == 0
 
-        if rc == 0:
-            return True
-
-        return False
 
 def install_packages(module, packages):
     install_c = 0
@@ -47,6 +46,7 @@ def install_packages(module, packages):
         module.exit_json(changed=True, msg="installed %s package(s)" % (install_c))
 
     module.exit_json(changed=False, msg="package(s) already installed")
+
 
 def main():
     module = AnsibleModule(
@@ -73,7 +73,6 @@ def main():
         if p['state'] == 'present':
             install_packages(module, pkgs)
 
-# import module snippets
-from ansible.module_utils.basic import *
 
+from ansible.module_utils.basic import *
 main()
