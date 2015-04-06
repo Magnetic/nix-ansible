@@ -16,13 +16,15 @@ EXAMPLES = '''
 import os
 
 
-NIX_PATH = os.expanduser("~/.nix-profile/bin/nix-env")
+NIX_ENV_BIN = os.expanduser("~/.nix-profile/bin/nix-env")
 
 
 def query_package(module, name, state="present"):
     if state == "present":
-        cmd = "nix-env -q %s" % (name)
-        rc, stdout, stderr = module.run_command(cmd, check_rc=False)
+        rc, _, _ = module.run_command(
+            [NIX_ENV_BIN, "-q", name],
+            check_rc=False,
+        )
         return rc == 0
     # XXX: Presumably there's stuff here?
 
@@ -64,8 +66,9 @@ def main():
         ),
     )
 
-    if not os.path.exists(NIX_PATH):
-        module.fail_json(msg="cannot find nix-env, looking for %s" % (NIX_PATH))
+    if not os.path.exists(NIX_ENV_BIN):
+        module.fail_json(msg="cannot find nix-env, looking for %s" %
+                         (NIX_ENV_BIN))
 
     p = module.params
 
