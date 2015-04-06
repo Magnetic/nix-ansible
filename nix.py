@@ -15,8 +15,7 @@ EXAMPLES = """
 
 import os
 
-
-_DEFAULT_NIX_ENV_BIN = os.expanduser("~/.nix-profile/bin/nix-env")
+_DEFAULT_NIX_ENV_BIN = "nix-env"
 
 
 class Nix(object):
