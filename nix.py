@@ -13,7 +13,6 @@ EXAMPLES = '''
 - nix: name=foo state=present
 '''
 
-import json
 import os
 
 
@@ -25,12 +24,13 @@ def query_package(module, name, state="present"):
         cmd = "nix-env -q %s" % (name)
         rc, stdout, stderr = module.run_command(cmd, check_rc=False)
         return rc == 0
+    # XXX: Presumably there's stuff here?
 
 
 def install_packages(module, packages):
-    install_c = 0
+    installed = []
 
-    for i, package in enumerate(packages):
+    for package in packages:
         if query_package(module, package):
             continue
 
@@ -40,21 +40,29 @@ def install_packages(module, packages):
         if rc != 0:
             module.fail_json(msg="failed to install %s" % (package))
 
-        install_c += 1
+        installed.append(package)
 
-    if install_c > 0:
-        module.exit_json(changed=True, msg="installed %s package(s)" % (install_c))
-
-    module.exit_json(changed=False, msg="package(s) already installed")
+    info = dict(changed=False, msg="package(s) already installed")
+    if installed:
+        info = dict(
+            changed=True,
+            msg="installed %s package(s)" % (len(installed),),
+        )
+    module.exit_json(**info)
 
 
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            name      = dict(aliases=['pkg']),
-            state     = dict(default='present', choices=['present', 'installed', 'absent', 'removed'])),
-        required_one_of = [['name']],
-        supports_check_mode = True)
+        required_one_of=[["name"]],
+        supports_check_mode=True,
+        argument_spec=dict(
+            name=dict(aliases=["pkg"]),
+            state=dict(
+                default="present",
+                choices=["present", "installed", "absent", "removed"],
+            ),
+        ),
+    )
 
     if not os.path.exists(NIX_PATH):
         module.fail_json(msg="cannot find nix-env, looking for %s" % (NIX_PATH))
