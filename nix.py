@@ -1,56 +1,56 @@
 #!/usr/bin/python -tt
 # -*- coding: utf-8 -*-
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: nix
 short_description: Manage packages with Nix
 
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 # Install package foo
 - nix: name=foo state=present
-'''
+"""
 
 import os
 
 
-NIX_ENV_BIN = os.expanduser("~/.nix-profile/bin/nix-env")
+_DEFAULT_NIX_ENV_BIN = os.expanduser("~/.nix-profile/bin/nix-env")
 
 
-def query_package(module, name, state="present"):
-    if state == "present":
-        rc, _, _ = module.run_command(
-            [NIX_ENV_BIN, "-q", name],
+class Nix(object):
+    def __init__(self, ansible_module, nix_env=_DEFAULT_NIX_ENV_BIN):
+        self._module = ansible_module
+        self._nix_env = nix_env
+
+    def is_installed(self, package):
+        exit_status, _, _ = self._module.run_command(
+            [self._nix_env, "-q", name],
             check_rc=False,
         )
-        return rc == 0
-    # XXX: Presumably there's stuff here?
+        return exit_status == 0
 
+    def install(self, *packages):
+        newly_installed = []
 
-def install_packages(module, packages):
-    installed = []
+        for package in packages:
+            if self.is_installed(package=package):
+                continue
+            exit_status, _, _ = self._module.run_command(
+                [self._nix_env, "-i", package],
+            )
+            installed.append(package)
 
-    for package in packages:
-        if query_package(module, package):
-            continue
+        return newly_installed
 
-        cmd = "nix-env -i %s" % package
-        rc, stdout, stderr = module.run_command(cmd, check_rc=False)
-
-        if rc != 0:
-            module.fail_json(msg="failed to install %s" % (package))
-
-        installed.append(package)
-
-    info = dict(changed=False, msg="package(s) already installed")
-    if installed:
-        info = dict(
-            changed=True,
-            msg="installed %s package(s)" % (len(installed),),
-        )
-    module.exit_json(**info)
+        info = dict(changed=False, msg="package(s) already installed")
+        if installed:
+            info = dict(
+                changed=True,
+                msg="installed %s package(s)" % (len(installed),),
+            )
+        module.exit_json(**info)
 
 
 def main():
@@ -66,23 +66,28 @@ def main():
         ),
     )
 
-    if not os.path.exists(NIX_ENV_BIN):
-        module.fail_json(msg="cannot find nix-env, looking for %s" %
-                         (NIX_ENV_BIN))
+    nix = Nix(ansible_module=module)
 
-    p = module.params
+    params = module.params
 
     # normalize the state parameter
-    if p['state'] in ['present', 'installed']:
-        p['state'] = 'present'
-    elif p['state'] in ['absent', 'removed']:
-        p['state'] = 'absent'
+    if params["state"] in ["present", "installed"]:
+        params["state"] = "present"
+    elif params["state"] in ["absent", "removed"]:
+        params["state"] = "absent"
 
-    if p['name']:
-        pkgs = p['name'].split(',')
+    name = params["name"]
+    if not name:
+        # XXX ?
+        pass
+    else:
+        packages = name.split(",")
 
-        if p['state'] == 'present':
-            install_packages(module, pkgs)
+        if params["state"] == "present":
+            nix.install(*packages)
+        else:
+            # XXX ?
+            pass
 
 
 from ansible.module_utils.basic import *
