@@ -13,7 +13,6 @@ EXAMPLES = """
 - nix: name=foo state=present
 """
 
-import os
 
 _DEFAULT_NIX_ENV_BIN = "nix-env"
 
@@ -25,7 +24,7 @@ class Nix(object):
 
     def is_installed(self, package):
         exit_status, _, _ = self._module.run_command(
-            [self._nix_env, "-q", name],
+            [self._nix_env, "-q", package],
             check_rc=False,
         )
         return exit_status == 0
@@ -39,17 +38,9 @@ class Nix(object):
             exit_status, _, _ = self._module.run_command(
                 [self._nix_env, "-i", package],
             )
-            installed.append(package)
+            newly_installed.append(package)
 
         return newly_installed
-
-        info = dict(changed=False, msg="package(s) already installed")
-        if installed:
-            info = dict(
-                changed=True,
-                msg="installed %s package(s)" % (len(installed),),
-            )
-        module.exit_json(**info)
 
 
 def main():
@@ -83,7 +74,14 @@ def main():
         packages = name.split(",")
 
         if params["state"] == "present":
-            nix.install(*packages)
+            newly_installed = nix.install(*packages)
+            info = dict(changed=False, msg="package(s) already installed")
+            if newly_installed:
+                info = dict(
+                    changed=True,
+                    msg="installed %s package(s)" % (len(newly_installed),),
+                )
+            module.exit_json(**info)
         else:
             # XXX ?
             pass
