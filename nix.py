@@ -13,21 +13,17 @@ EXAMPLES = """
 - nix: name=foo state=present
 """
 
-
-_DEFAULT_NIX_ENV_BIN = "nix-env"
-
-
 class Nix(object):
-    def __init__(self, ansible_module, nix_env=_DEFAULT_NIX_ENV_BIN):
-        self._module = ansible_module
-        self._nix_env = nix_env
+    def __init__(self, ansible_module, nix_env="nix-env"):
+        self.nix_env = nix_env
+        self.ansible_module = ansible_module
+        self.services = []
 
-    def is_installed(self, package):
-        exit_status, _, _ = self._module.run_command(
-            [self._nix_env, "-q", package],
-            check_rc=False,
-        )
-        return exit_status == 0
+    def enable(self, *packages):
+        self.services.extend(packages)
+
+    def is_enabled(self, package):
+        return False
 
     def install(self, *packages):
         newly_installed = []
@@ -35,57 +31,73 @@ class Nix(object):
         for package in packages:
             if self.is_installed(package=package):
                 continue
-            exit_status, _, _ = self._module.run_command(
-                [self._nix_env, "-i", package],
+            exit_status, _, _ = self.ansible_module.run_command(
+                [self.nix_env, "-i", package],
             )
             newly_installed.append(package)
 
         return newly_installed
 
+    def is_installed(self, package):
+        exit_status, _, _ = self.ansible_module.run_command(
+            [self.nix_env, "-q", package],
+            check_rc=False,
+        )
+        return exit_status == 0
 
-def main():
-    module = AnsibleModule(
-        required_one_of=[["name"]],
-        supports_check_mode=True,
-        argument_spec=dict(
-            name=dict(aliases=["pkg"]),
-            state=dict(
-                default="present",
-                choices=["present", "installed", "absent", "removed"],
-            ),
-        ),
+
+def main(ansible_module):
+    params = ansible_module.params
+
+    facts = ansible_facts(ansible_module)
+    assert "services" not in facts
+
+    nix = Nix(ansible_module=ansible_module)
+    act_on, will_change = action_for(nix, params["state"])
+
+    changed, packages = [], params["name"].split(",")
+    for package in packages:
+        package = package.strip()
+        if not package or not will_change(package):
+            continue
+
+        act_on(package)
+        changed.append(package)
+
+    if changed:
+        msg="installed " + ", ".join(changed)
+    else:
+        msg="package(s) already installed"
+
+    ansible_module.exit_json(
+        ansible_facts={"services" : nix.services},
+        changed=bool(changed),
+        msg=msg,
     )
 
-    nix = Nix(ansible_module=module)
 
-    params = module.params
-
-    # normalize the state parameter
-    if params["state"] in ["present", "installed"]:
-        params["state"] = "present"
-    elif params["state"] in ["absent", "removed"]:
-        params["state"] = "absent"
-
-    name = params["name"]
-    if not name:
-        # XXX ?
-        pass
+def action_for(nix, state):
+    if state == "enabled":
+        return nix.enable, lambda package : not nix.is_enabled(package)
+    elif state == "present":
+        return nix.install, lambda package : not nix.is_installed(package)
     else:
-        packages = name.split(",")
-
-        if params["state"] == "present":
-            newly_installed = nix.install(*packages)
-            info = dict(changed=False, msg="package(s) already installed")
-            if newly_installed:
-                info = dict(
-                    changed=True,
-                    msg="installed %s package(s)" % (len(newly_installed),),
-                )
-            module.exit_json(**info)
-        else:
-            # XXX ?
-            pass
+        raise ValueError("Unknown state: %r" % (state,))
 
 
+# Ansible is doing weird things, and cat's stuff into this module to
+# replace the below things. So yes you need import *.
 from ansible.module_utils.basic import *
-main()
+from ansible.module_utils.facts import *
+
+
+# More weird, the module has to literally be called module for this to work.
+module = AnsibleModule(
+    required_one_of=[["name"]],
+    supports_check_mode=True,
+    argument_spec=dict(
+        name={},
+        state={"default" : "enabled", "choices" : ["enabled", "present"]},
+    ),
+)
+main(ansible_module=module)
